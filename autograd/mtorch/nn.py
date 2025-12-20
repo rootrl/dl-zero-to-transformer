@@ -152,7 +152,57 @@ class CausalSelfAttention(Module):
     def parameters(self):
         return self.wq.parameters() + self.wk.parameters() + self.wv.parameters()
 
+class MultiHeadAttention(Module):
+    def __init__(self, emb_dim, n_head, block_size):
+        head_size = emb_dim
+        self.head_size = head_size
+        self.n_head = n_head
+        self.head_dim = emb_dim // n_head
 
+        self.wq = Linear(emb_dim, head_size)
+        self.wk = Linear(emb_dim, head_size)
+        self.wv = Linear(emb_dim, head_size)
+
+        self.proj = Linear(emb_dim, emb_dim)
+
+        self.tril = Tensor(np.tril(np.ones((block_size, block_size))), label="Mask_Buffer")
+
+    def __call__(self, x):
+        return self.forward(x)
+
+    def forward(self, x):
+        B, T, C = x.data.shape
+
+        q = self.wq(x)
+        k = self.wk(x)
+        v = self.wv(x)
+
+        # x (B,T,C) to (B, T, n_head, C)
+        q = q.reshape((B,T,self.n_head, -1))
+        q = q.transpose(-3, -2)
+
+        k = k.reshape((B,T,self.n_head, -1))
+        k = k.transpose(-3, -2)
+
+        v = v.reshape((B,T,self.n_head, -1))
+        v = v.transpose(-3, -2)
+
+        s = (q @ k.transpose(-2,-1)) * (self.head_dim**-0.5)
+        mk = self.tril.data[:T, :T]
+        mask_adder = (1.0 - mk) * -1e9
+        s = s + mask_adder
+
+        out = s.softmax() @ v
+
+        out = out.transpose(-3, -2)
+        out = out.reshape((B,T,-1))
+
+        out = self.proj(out)
+
+        return out
+
+    def parameters(self):
+        return self.wq.parameters() + self.wk.parameters() + self.wv.parameters() + self.proj.parameters() 
 
 # 激活函数
 class Sequential(Module):

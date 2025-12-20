@@ -11,14 +11,15 @@ from mtorch.optimizer import Adam
 file_path = os.path.join(os.path.dirname(__file__), 'data', 'input.txt')
 with open(file_path, 'r', encoding='utf-8') as f: text = f.read()
 train_text = text 
+#train_text = text[:10000]
 tokenizer = Tokenizer(train_text)
 full_ids = tokenizer.encode(train_text)
 vocab_size = len(tokenizer.stoi)
 print(f"Vocab Size: {vocab_size}")
 
 # --- 2. Batch 处理 (保持不变) ---
-BLOCK_SIZE = 8
-BATCH_SIZE = 32 # 减小一点 Batch Size 方便调试
+BLOCK_SIZE = 16
+BATCH_SIZE = 64 # 减小一点 Batch Size 方便调试
 
 def one_hot(indices, vocab_size):
     flat_indices = indices.flatten()
@@ -38,33 +39,33 @@ def get_batch(ids, batch_size=32, block_size=8):
 
 # --- 3. 模型定义 (关键升级！) ---
 # 超参数配置
-EMB_DIM = 32
+EMB_DIM = 64
 N_HEAD = 4   # 新增：我们要用 4 个头
 # 只要 EMB_DIM 能被 N_HEAD 整除即可 (32 / 4 = 8)
+# block_size = head_dim
 HEAD_SIZE = EMB_DIM // N_HEAD 
 
 print(f"Model Config: Emb={EMB_DIM}, Heads={N_HEAD}, Head_Size={HEAD_SIZE}")
 
 model = Sequential([
     Embedding(vocab_size, EMB_DIM),
-    PositionalEncoding(EMB_DIM, max_len=BLOCK_SIZE*2),
-    # 替换为 MultiHeadAttention
+    PositionalEncoding(EMB_DIM, max_len=BLOCK_SIZE*2), # output (B, T, C)
     MultiHeadAttention(emb_dim=EMB_DIM, n_head=N_HEAD, block_size=BLOCK_SIZE),
     Linear(EMB_DIM, vocab_size)
 ])
 
 # --- 4. 终极测试：单批次过拟合 (Overfit Check) ---
-# 这是你要求的"类似的测试"
 criterion = CrossEntropyLoss()
-optimizer = Adam(model.parameters(), lr=0.005)
+optimizer = Adam(model.parameters(), lr=0.001)
 
 print(f"\n=== Start MHA Sanity Check (Overfitting One Batch) ===")
 # 1. 锁死数据
-fixed_X, fixed_Y = get_batch(full_ids, BATCH_SIZE, BLOCK_SIZE)
+#fixed_X, fixed_Y = get_batch(full_ids, BATCH_SIZE, BLOCK_SIZE)
 
-for step in range(501):
+for step in range(5000):
     # 2. 永远使用同一个 Batch
-    X, Y = fixed_X, fixed_Y
+    #X, Y = fixed_X, fixed_Y
+    X, Y = get_batch(full_ids, BATCH_SIZE, BLOCK_SIZE)
     
     # Forward
     logits = model(X)
