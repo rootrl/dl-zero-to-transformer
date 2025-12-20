@@ -32,6 +32,11 @@ python -m mtorch.test.test_matmul
 
 # 性能
  numpy实现 单cpu运行
+
+ Cupy gpu
+
  c++ 实现 gpu
+
  能不能rust？
+
  要不要接触cuda

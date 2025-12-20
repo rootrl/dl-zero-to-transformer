@@ -204,6 +204,92 @@ class MultiHeadAttention(Module):
     def parameters(self):
         return self.wq.parameters() + self.wk.parameters() + self.wv.parameters() + self.proj.parameters() 
 
+class Block(Module):
+    def __init__(self, emb_dim, n_head, block_size):
+        # 1. Layer Norms
+        self.ln1 = LayerNorm(emb_dim)
+        self.ln2 = LayerNorm(emb_dim)
+        
+        # 2. Attention
+        self.attn = MultiHeadAttention(emb_dim, n_head, block_size)
+        
+        # 3. FeedForward
+        self.ffwd = FeedForward(emb_dim)
+
+    def __call__(self, x):
+        return self.forward(x)
+
+    def forward(self, x):
+        # 残差连接 (Residual Connection) 是核心！
+        # 公式：x = x + layer(x)
+        
+        # Part 1: Attention
+        # 现在的 GPT 结构通常是 Pre-Norm (先 Norm 再进层)
+        x = x + self.attn(self.ln1(x))
+        
+        # Part 2: FeedForward
+        x = x + self.ffwd(self.ln2(x))
+        
+        return x
+
+    def parameters(self):
+        return self.ln1.parameters() + self.ln2.parameters() + \
+               self.attn.parameters() + self.ffwd.parameters()
+
+class FeedForward(Module):
+    def __init__(self, emb_dim, mult=4):
+        self.net = Sequential([
+            Linear(emb_dim, emb_dim * mult),
+            ReLU(),  # 这是一个 Module 了！
+            Linear(emb_dim * mult, emb_dim)
+        ])
+
+    def __call__(self, x):
+        return self.forward(x)
+
+    def forward(self, x):
+        return self.net(x) # 直接调用 Sequential
+
+    def parameters(self):
+        return self.net.parameters()
+
+class LayerNorm(Module):
+    def __init__(self, dim, eps=1e-5):
+        self.eps = eps
+        # 两个可学习参数：gamma (缩放) 和 beta (平移)
+        self.gamma = Tensor(np.ones(dim), label="LN_Gamma")
+        self.beta = Tensor(np.zeros(dim), label="LN_Beta")
+
+    def __call__(self, x):
+        return self.forward(x)
+
+    def forward(self, x):
+        # x: (B, T, C)
+        # 1. 计算均值和方差 (沿着最后一个维度 C)
+        # 注意：这里我们需要 Tensor 支持 mean 和 var，或者手写
+        # 基础算子组合
+        
+        # mean = x.mean(axis=-1, keepdims=True)
+        # 既然我们可能没实现 Tensor.mean，我们用 sum / shape
+        C = x.data.shape[-1]
+        mean = x.sum(axis=-1, keepdims=True) * (1.0 / C)
+        
+        # var = (x - mean)^2 .mean()
+        x_shift = x - mean
+        var = (x_shift * x_shift).sum(axis=-1, keepdims=True) * (1.0 / C)
+        
+        # 2. 归一化
+        # x_hat = (x - mean) / sqrt(var + eps)
+        rstd = (var + self.eps)**-0.5
+        x_hat = x_shift * rstd
+        
+        # 3. 缩放和平移
+        out = x_hat * self.gamma + self.beta
+        return out
+
+    def parameters(self):
+        return [self.gamma, self.beta]
+
 # 激活函数
 class Sequential(Module):
     def __init__(self, layers):
@@ -225,8 +311,12 @@ class Sequential(Module):
 class Sigmoid(Module):
     def __call__(self, x):
         return x.sigmoid()
+    def parameters(self):
+        return []
 
 class ReLU(Module):
     def __call__(self, x):
         return x.relu()
+    def parameters(self):
+        return []
 

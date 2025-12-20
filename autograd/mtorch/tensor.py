@@ -149,13 +149,28 @@ class Tensor:
         out._backward = _backward
         return out
 
-    def sum(self):
+    def sum(self, axis=None, keepdims=False):
         # 1. Forward
-        out = Tensor(np.sum(self.data), _children=(self,), _op='sum')
+        out_data = np.sum(self.data, axis=axis, keepdims=keepdims)
+        out = Tensor(out_data, _children=(self,), _op='sum')
 
         # 2. Backward
         def _backward():
-            self.grad += np.ones_like(self.data) * out.grad
+            grad = out.grad
+
+            # 这样 Numpy 才能正确进行广播
+            if not keepdims and axis is not None:
+                if isinstance(axis, int):
+                    grad = np.expand_dims(grad, axis)
+                elif isinstance(axis, tuple):
+                    for ax in sorted(axis):
+                        grad = np.expand_dims(grad, ax)
+
+            # 累加梯度
+            if self.grad is None:
+                self.grad = np.zeros_like(self.data) + grad
+            else:
+                self.grad += grad
 
         out._backward = _backward
         return out

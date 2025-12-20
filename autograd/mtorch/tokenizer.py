@@ -3,7 +3,7 @@ import re
 class Tokenizer:
     def __init__(self, text, unk_token="<UNK>"):
         self.unk_token = unk_token
-        self.pattern = r"\w+|[^\w\s]"
+        self.pattern = r"\w+|[^\w\s]\s+"
         # 1. 预处理：正则分词
         tokens = re.findall(self.pattern, text)
         # 2. 构建词表：去重
@@ -25,4 +25,4 @@ class Tokenizer:
     def decode(self, ids):
         # List[int] -> List[str] -> join with space? 
         tokens = [self.itos.get(i, self.unk_token) for i in ids]
-        return " ".join(tokens)
+        return "".join(tokens)
